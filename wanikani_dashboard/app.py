@@ -1,4 +1,5 @@
 """Application Streamlit pour afficher les informations WaniKani en francais.
+Ce tableau de bord doit etre lance avec ``streamlit run``.
 """
 
 import datetime as dt
@@ -9,6 +10,16 @@ import pandas as pd
 import requests
 from googletrans import Translator
 import streamlit as st
+
+# Avertit l'utilisateur s'il lance le script sans ``streamlit run``
+try:
+    from streamlit.runtime.scriptrunner import get_script_run_ctx
+
+    if get_script_run_ctx() is None:
+        print("Ce script doit être exécuté avec 'streamlit run'.")
+        raise SystemExit
+except Exception:
+    pass
 
 API_BASE = "https://api.wanikani.com/v2/"
 
@@ -35,54 +46,7 @@ def fetch_assignments(token: str, subject_type: str) -> List[Dict]:
 def fetch_subjects(token: str, ids: List[int]) -> Dict[int, Dict]:
     """Recupere les details des sujets a partir de leurs IDs."""
     if not ids:
-        return {}
-    url = f"{API_BASE}subjects?ids={','.join(str(i) for i in ids)}"
-    result = _get(url, token)
-    return {item["id"]: item for item in result["data"]}
-
-
-def fetch_summary(token: str) -> Dict:
-    """Recupere le resume des reviews a venir."""
-    url = f"{API_BASE}summary"
-    return _get(url, token)
-
-
-def fetch_available_lessons(token: str) -> List[Dict]:
-    """Recupere les assignments disponibles pour les lecons immediates."""
-    url = f"{API_BASE}assignments?immediately_available_for_lessons=true"
-    data = []
-    while url:
-        result = _get(url, token)
-        data.extend(result["data"])
-        url = result["pages"].get("next_url")
-    return data
-
-
-def build_srs_dataframe(assignments: List[Dict]) -> pd.DataFrame:
-    """Construit un DataFrame representant la distribution SRS."""
-    stages = {
-        0: "Leçon",
-        1: "Apprenti 1",
-        2: "Apprenti 2",
-        3: "Apprenti 3",
-        4: "Apprenti 4",
-        5: "Guru 1",
-        6: "Guru 2",
-        7: "Maître",
-        8: "Éclairé",
-        9: "Brûlé",
-    }
-    counts = {name: 0 for name in stages.values()}
-    for a in assignments:
-        name = stages.get(a.get("data", {}).get("srs_stage", 0), "Autre")
-        counts[name] = counts.get(name, 0) + 1
-    df = pd.DataFrame({"SRS": list(counts.keys()), "Nombre": list(counts.values())})
-    return df
-
-
-def translate_meaning(text: str, translator: Translator) -> str:
-    """Traduit un texte anglais en francais."""
-    try:
+@@ -86,119 +96,148 @@ def translate_meaning(text: str, translator: Translator) -> str:
         return translator.translate(text, dest="fr").text
     except Exception:
         # En cas d'echec, on renvoie le texte original
@@ -105,6 +69,21 @@ def build_review_schedule(summary: Dict) -> pd.DataFrame:
     data = {"Heure": list(hours.keys()), "Nombre": list(hours.values())}
     df = pd.DataFrame(data)
     df.sort_values("Heure", inplace=True)
+    return df
+
+
+def build_level_dataframe(assignments: List[Dict], subjects: Dict[int, Dict]) -> pd.DataFrame:
+    """Construit un DataFrame du nombre d'elements appris par niveau."""
+    levels = {}
+    for a in assignments:
+        sid = a["data"].get("subject_id")
+        level = subjects.get(sid, {}).get("data", {}).get("level")
+        if level is not None:
+            levels[level] = levels.get(level, 0) + 1
+    if not levels:
+        return pd.DataFrame(columns=["Niveau", "Nombre"])
+    df = pd.DataFrame({"Niveau": list(levels.keys()), "Nombre": list(levels.values())})
+    df.sort_values("Niveau", inplace=True)
     return df
 
 
@@ -154,6 +133,25 @@ with st.spinner("Récupération des données..."):
     subjects = fetch_subjects(token, kanji_ids + vocab_ids + lesson_ids)
     summary = fetch_summary(token)
     srs_df = build_srs_dataframe(kanji_assignments + vocab_assignments)
+    try:
+        kanji_assignments = fetch_assignments(token, "kanji")
+        vocab_assignments = fetch_assignments(token, "vocabulary")
+        lesson_assignments = fetch_available_lessons(token)
+
+        kanji_ids = [a["data"]["subject_id"] for a in kanji_assignments]
+        vocab_ids = [a["data"]["subject_id"] for a in vocab_assignments]
+        lesson_ids = [a["data"]["subject_id"] for a in lesson_assignments]
+
+        subjects = fetch_subjects(token, kanji_ids + vocab_ids + lesson_ids)
+        summary = fetch_summary(token)
+        srs_df = build_srs_dataframe(kanji_assignments + vocab_assignments)
+        level_df = build_level_dataframe(kanji_assignments + vocab_assignments, subjects)
+    except requests.HTTPError:
+        st.error("Impossible de récupérer les données WaniKani. Vérifiez votre token API.")
+        st.stop()
+    except Exception as exc:
+        st.error(f"Erreur lors de la récupération des données : {exc}")
+        st.stop()
 
 # Statistiques generales
 nb_kanji = len(kanji_assignments)
@@ -176,6 +174,12 @@ else:
 
 st.subheader("Répartition SRS")
 st.bar_chart(srs_df.set_index("SRS"))
+
+st.subheader("Progression par niveau")
+if not level_df.empty:
+    st.bar_chart(level_df.set_index("Niveau"))
+else:
+    st.write("Aucune donnée de niveau disponible.")
 
 # Liste des leçons, kanji et vocabulaire
 st.subheader("Éléments d'étude")
