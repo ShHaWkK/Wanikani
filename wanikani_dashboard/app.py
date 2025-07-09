@@ -47,6 +47,39 @@ def fetch_summary(token: str) -> Dict:
     return _get(url, token)
 
 
+def fetch_available_lessons(token: str) -> List[Dict]:
+    """Recupere les assignments disponibles pour les lecons immediates."""
+    url = f"{API_BASE}assignments?immediately_available_for_lessons=true"
+    data = []
+    while url:
+        result = _get(url, token)
+        data.extend(result["data"])
+        url = result["pages"].get("next_url")
+    return data
+
+
+def build_srs_dataframe(assignments: List[Dict]) -> pd.DataFrame:
+    """Construit un DataFrame representant la distribution SRS."""
+    stages = {
+        0: "Leçon",
+        1: "Apprenti 1",
+        2: "Apprenti 2",
+        3: "Apprenti 3",
+        4: "Apprenti 4",
+        5: "Guru 1",
+        6: "Guru 2",
+        7: "Maître",
+        8: "Éclairé",
+        9: "Brûlé",
+    }
+    counts = {name: 0 for name in stages.values()}
+    for a in assignments:
+        name = stages.get(a.get("data", {}).get("srs_stage", 0), "Autre")
+        counts[name] = counts.get(name, 0) + 1
+    df = pd.DataFrame({"SRS": list(counts.keys()), "Nombre": list(counts.values())})
+    return df
+
+
 def translate_meaning(text: str, translator: Translator) -> str:
     """Traduit un texte anglais en francais."""
     try:
@@ -79,6 +112,21 @@ def build_review_schedule(summary: Dict) -> pd.DataFrame:
 st.set_page_config(page_title="Tableau de bord WaniKani", page_icon="🎴", layout="wide")
 st.title("Tableau de bord WaniKani")
 
+# Style simple rappelant WaniKani
+st.markdown(
+    """
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;700&display=swap');
+        .stApp {background-color:#f5f5f5;}
+        .block-container {background-color:#ffffff; padding:2rem 2rem; border-radius:10px;}
+        h1, h2, h3 {color:#a25ef8; font-family:'Noto Sans', sans-serif;}
+        body, text, button {font-family:'Noto Sans', sans-serif;}
+        .stButton>button {background-color:#a25ef8; color:white; border:none; border-radius:4px;}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 # Saisie du token utilisateur
 if "token" not in st.session_state:
     st.session_state["token"] = ""
@@ -97,20 +145,25 @@ translator = Translator()
 with st.spinner("Récupération des données..."):
     kanji_assignments = fetch_assignments(token, "kanji")
     vocab_assignments = fetch_assignments(token, "vocabulary")
+    lesson_assignments = fetch_available_lessons(token)
 
     kanji_ids = [a["data"]["subject_id"] for a in kanji_assignments]
     vocab_ids = [a["data"]["subject_id"] for a in vocab_assignments]
+    lesson_ids = [a["data"]["subject_id"] for a in lesson_assignments]
 
-    subjects = fetch_subjects(token, kanji_ids + vocab_ids)
+    subjects = fetch_subjects(token, kanji_ids + vocab_ids + lesson_ids)
     summary = fetch_summary(token)
+    srs_df = build_srs_dataframe(kanji_assignments + vocab_assignments)
 
 # Statistiques generales
 nb_kanji = len(kanji_assignments)
 nb_vocab = len(vocab_assignments)
+nb_lessons = len(lesson_assignments)
 st.subheader("Statistiques")
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns(3)
 col1.metric("Kanji appris", nb_kanji)
 col2.metric("Vocabulaire appris", nb_vocab)
+col3.metric("Leçons disponibles", nb_lessons)
 
 # Planning des reviews
 df_reviews = build_review_schedule(summary)
@@ -121,13 +174,36 @@ if df_reviews.empty:
 else:
     st.bar_chart(df_reviews.set_index("Heure"))
 
-# Liste des kanji et vocabulaire
-st.subheader("Kanji et vocabulaire appris")
+st.subheader("Répartition SRS")
+st.bar_chart(srs_df.set_index("SRS"))
 
-tabs = st.tabs(["Kanji", "Vocabulaire"])
+# Liste des leçons, kanji et vocabulaire
+st.subheader("Éléments d'étude")
+
+tabs = st.tabs(["Leçons", "Kanji", "Vocabulaire"])
+
+# Affichage des leçons disponibles
+with tabs[0]:
+    if not lesson_ids:
+        st.write("Aucune leçon disponible.")
+    else:
+        lesson_data = []
+        for aid in lesson_ids:
+            subject = subjects.get(aid, {})
+            character = subject.get("data", {}).get("characters", "?")
+            meaning = subject.get("data", {}).get("meanings", [])
+            if meaning:
+                meaning = meaning[0]["meaning"]
+                meaning = translate_meaning(meaning, translator)
+            else:
+                meaning = "?"
+            url = f"https://www.wanikani.com/subject/{aid}"
+            lesson_data.append({"Élément": character, "Signification": meaning, "Lien": f"[Ouvrir]({url})"})
+        df = pd.DataFrame(lesson_data)
+        st.write(df.to_html(escape=False), unsafe_allow_html=True)
 
 # Affichage des kanji
-with tabs[0]:
+with tabs[1]:
     if not kanji_ids:
         st.write("Aucun kanji appris.")
     else:
@@ -145,7 +221,7 @@ with tabs[0]:
         st.table(pd.DataFrame(kanji_data))
 
 # Affichage du vocabulaire
-with tabs[1]:
+with tabs[2]:
     if not vocab_ids:
         st.write("Aucun vocabulaire appris.")
     else:
