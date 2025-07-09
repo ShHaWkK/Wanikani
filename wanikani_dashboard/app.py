@@ -1,8 +1,8 @@
 """Application Streamlit pour afficher les informations WaniKani en francais.
+L'interface adopte un thème japonais pour une présentation plus immersive.
 """
 
 import datetime as dt
-import json
 from typing import Dict, List
 
 import pandas as pd
@@ -108,6 +108,21 @@ def build_review_schedule(summary: Dict) -> pd.DataFrame:
     return df
 
 
+def build_level_dataframe(assignments: List[Dict], subjects: Dict[int, Dict]) -> pd.DataFrame:
+    """Construit un DataFrame du nombre d'elements appris par niveau."""
+    levels = {}
+    for a in assignments:
+        sid = a["data"].get("subject_id")
+        level = subjects.get(sid, {}).get("data", {}).get("level")
+        if level is not None:
+            levels[level] = levels.get(level, 0) + 1
+    if not levels:
+        return pd.DataFrame(columns=["Niveau", "Nombre"])
+    df = pd.DataFrame({"Niveau": list(levels.keys()), "Nombre": list(levels.values())})
+    df.sort_values("Niveau", inplace=True)
+    return df
+
+
 # Interface Streamlit
 st.set_page_config(page_title="Tableau de bord WaniKani", page_icon="🎴", layout="wide")
 st.title("Tableau de bord WaniKani")
@@ -116,11 +131,14 @@ st.title("Tableau de bord WaniKani")
 st.markdown(
     """
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;700&display=swap');
-        .stApp {background-color:#f5f5f5;}
-        .block-container {background-color:#ffffff; padding:2rem 2rem; border-radius:10px;}
-        h1, h2, h3 {color:#a25ef8; font-family:'Noto Sans', sans-serif;}
-        body, text, button {font-family:'Noto Sans', sans-serif;}
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap');
+        .stApp {
+            background: url('https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=1600&q=80') no-repeat center center fixed;
+            background-size: cover;
+        }
+        .block-container {background-color: rgba(255, 255, 255, 0.85); padding:2rem 2rem; border-radius:10px;}
+        h1, h2, h3 {color:#a25ef8; font-family:'Noto Sans JP', sans-serif;}
+        body, text, button {font-family:'Noto Sans JP', sans-serif;}
         .stButton>button {background-color:#a25ef8; color:white; border:none; border-radius:4px;}
     </style>
     """,
@@ -143,17 +161,25 @@ translator = Translator()
 
 # Chargement des donnees
 with st.spinner("Récupération des données..."):
-    kanji_assignments = fetch_assignments(token, "kanji")
-    vocab_assignments = fetch_assignments(token, "vocabulary")
-    lesson_assignments = fetch_available_lessons(token)
+    try:
+        kanji_assignments = fetch_assignments(token, "kanji")
+        vocab_assignments = fetch_assignments(token, "vocabulary")
+        lesson_assignments = fetch_available_lessons(token)
 
-    kanji_ids = [a["data"]["subject_id"] for a in kanji_assignments]
-    vocab_ids = [a["data"]["subject_id"] for a in vocab_assignments]
-    lesson_ids = [a["data"]["subject_id"] for a in lesson_assignments]
+        kanji_ids = [a["data"]["subject_id"] for a in kanji_assignments]
+        vocab_ids = [a["data"]["subject_id"] for a in vocab_assignments]
+        lesson_ids = [a["data"]["subject_id"] for a in lesson_assignments]
 
-    subjects = fetch_subjects(token, kanji_ids + vocab_ids + lesson_ids)
-    summary = fetch_summary(token)
-    srs_df = build_srs_dataframe(kanji_assignments + vocab_assignments)
+        subjects = fetch_subjects(token, kanji_ids + vocab_ids + lesson_ids)
+        summary = fetch_summary(token)
+        srs_df = build_srs_dataframe(kanji_assignments + vocab_assignments)
+        level_df = build_level_dataframe(kanji_assignments + vocab_assignments, subjects)
+    except requests.HTTPError:
+        st.error("Impossible de récupérer les données WaniKani. Vérifiez votre token API.")
+        st.stop()
+    except Exception as exc:
+        st.error(f"Erreur lors de la récupération des données : {exc}")
+        st.stop()
 
 # Statistiques generales
 nb_kanji = len(kanji_assignments)
@@ -176,6 +202,12 @@ else:
 
 st.subheader("Répartition SRS")
 st.bar_chart(srs_df.set_index("SRS"))
+
+st.subheader("Progression par niveau")
+if not level_df.empty:
+    st.bar_chart(level_df.set_index("Niveau"))
+else:
+    st.write("Aucune donnée de niveau disponible.")
 
 # Liste des leçons, kanji et vocabulaire
 st.subheader("Éléments d'étude")
