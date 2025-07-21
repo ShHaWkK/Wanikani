@@ -4,6 +4,7 @@ Ce tableau de bord doit etre lance avec ``streamlit run``.
 
 import datetime as dt
 import json
+import os
 from typing import Dict, List
 
 import pandas as pd
@@ -21,7 +22,7 @@ try:
 except Exception:
     pass
 
-API_BASE = "https://api.wanikani.com/v2/"
+API_BASE = os.environ.get("WANIKANI_API_BASE", "https://api.wanikani.com/v2/")
 
 
 def _get(url: str, token: str) -> Dict:
@@ -46,7 +47,54 @@ def fetch_assignments(token: str, subject_type: str) -> List[Dict]:
 def fetch_subjects(token: str, ids: List[int]) -> Dict[int, Dict]:
     """Recupere les details des sujets a partir de leurs IDs."""
     if not ids:
-@@ -86,119 +96,148 @@ def translate_meaning(text: str, translator: Translator) -> str:
+        return {}
+    url = f"{API_BASE}subjects?ids={','.join(str(i) for i in ids)}"
+    result = _get(url, token)
+    return {item["id"]: item for item in result["data"]}
+
+
+def fetch_summary(token: str) -> Dict:
+    """Recupere le resume des reviews a venir."""
+    url = f"{API_BASE}summary"
+    return _get(url, token)
+
+
+def fetch_available_lessons(token: str) -> List[Dict]:
+    """Recupere les assignments disponibles pour les lecons immediates."""
+    url = f"{API_BASE}assignments?immediately_available_for_lessons=true"
+    data = []
+    while url:
+        result = _get(url, token)
+        data.extend(result["data"])
+        url = result["pages"].get("next_url")
+    return data
+
+
+def build_srs_dataframe(assignments: List[Dict]) -> pd.DataFrame:
+    """Construit un DataFrame representant la distribution SRS."""
+    stages = {
+        0: "Leçon",
+        1: "Apprenti 1",
+        2: "Apprenti 2",
+        3: "Apprenti 3",
+        4: "Apprenti 4",
+        5: "Guru 1",
+        6: "Guru 2",
+        7: "Maître",
+        8: "Éclairé",
+        9: "Brûlé",
+    }
+    counts = {name: 0 for name in stages.values()}
+    for a in assignments:
+        name = stages.get(a.get("data", {}).get("srs_stage", 0), "Autre")
+        counts[name] = counts.get(name, 0) + 1
+    df = pd.DataFrame({"SRS": list(counts.keys()), "Nombre": list(counts.values())})
+    return df
+
+
+def translate_meaning(text: str, translator: Translator) -> str:
+    """Traduit un texte anglais en francais."""
+    try:
         return translator.translate(text, dest="fr").text
     except Exception:
         # En cas d'echec, on renvoie le texte original
@@ -63,7 +111,7 @@ def build_review_schedule(summary: Dict) -> pd.DataFrame:
         available_at = dt.datetime.fromisoformat(item["available_at"].replace("Z", "+00:00"))
         if now <= available_at <= tomorrow:
             hour = available_at.replace(minute=0, second=0, microsecond=0)
-            hours[hour] = hours.get(hour, 0) + item["subject_ids"].__len__()
+            hours[hour] = hours.get(hour, 0) + len(item["subject_ids"])
     if not hours:
         return pd.DataFrame(columns=["Heure", "Nombre"])
     data = {"Heure": list(hours.keys()), "Nombre": list(hours.values())}
@@ -89,22 +137,24 @@ def build_level_dataframe(assignments: List[Dict], subjects: Dict[int, Dict]) ->
 
 # Interface Streamlit
 st.set_page_config(page_title="Tableau de bord WaniKani", page_icon="🎴", layout="wide")
-st.title("Tableau de bord WaniKani")
 
-# Style simple rappelant WaniKani
+# Style proche de WaniKani
+WANIKANI_PINK = "#f06"
 st.markdown(
-    """
+    f"""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;700&display=swap');
-        .stApp {background-color:#f5f5f5;}
-        .block-container {background-color:#ffffff; padding:2rem 2rem; border-radius:10px;}
-        h1, h2, h3 {color:#a25ef8; font-family:'Noto Sans', sans-serif;}
-        body, text, button {font-family:'Noto Sans', sans-serif;}
-        .stButton>button {background-color:#a25ef8; color:white; border:none; border-radius:4px;}
+        .stApp {{background-color:#f5f5f5;}}
+        .block-container {{background-color:#ffffff; padding:2rem 2rem; border-radius:10px;}}
+        h1, h2, h3 {{color:{WANIKANI_PINK}; font-family:'Noto Sans', sans-serif;}}
+        body, text, button {{font-family:'Noto Sans', sans-serif;}}
+        .stButton>button {{background-color:{WANIKANI_PINK}; color:white; border:none; border-radius:4px;}}
+        .wanikani-header {{background-color:{WANIKANI_PINK}; color:white; padding:1rem; text-align:center; margin-bottom:2rem; border-radius:5px;}}
     </style>
     """,
     unsafe_allow_html=True,
 )
+st.markdown("<div class='wanikani-header'>Tableau de bord WaniKani</div>", unsafe_allow_html=True)
 
 # Saisie du token utilisateur
 if "token" not in st.session_state:
@@ -122,17 +172,6 @@ translator = Translator()
 
 # Chargement des donnees
 with st.spinner("Récupération des données..."):
-    kanji_assignments = fetch_assignments(token, "kanji")
-    vocab_assignments = fetch_assignments(token, "vocabulary")
-    lesson_assignments = fetch_available_lessons(token)
-
-    kanji_ids = [a["data"]["subject_id"] for a in kanji_assignments]
-    vocab_ids = [a["data"]["subject_id"] for a in vocab_assignments]
-    lesson_ids = [a["data"]["subject_id"] for a in lesson_assignments]
-
-    subjects = fetch_subjects(token, kanji_ids + vocab_ids + lesson_ids)
-    summary = fetch_summary(token)
-    srs_df = build_srs_dataframe(kanji_assignments + vocab_assignments)
     try:
         kanji_assignments = fetch_assignments(token, "kanji")
         vocab_assignments = fetch_assignments(token, "vocabulary")
