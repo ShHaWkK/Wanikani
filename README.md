@@ -2,18 +2,18 @@
 Cette application Streamlit permet d'afficher vos kanji, vocabulaire et statistiques WaniKani avec une interface en français.
 
 ## Installation
-1. Installez les dépendances Python :
+Installez les dépendances Python :
    ```bash
    pip install -r requirements.txt
    ```
-2. Lancez l'application :
+Lancez l'application :
    ```bash
    streamlit run wanikani_dashboard/app.py
    ```
-3. Récupérez votre token API WaniKani :
+Récupérez votre token API WaniKani :
    - Si vous ne possédez pas de compte, créez-en un sur [wanikani.com](https://www.wanikani.com/).
    - Dans vos paramètres WaniKani, section *API Tokens*, générez un token **Read Only** et copiez‑le. Ce token vous sera demandé au lancement de l'application.
-4. (Optionnel) Démarrez l'API de démonstration :
+ (Optionnel) Démarrez l'API de démonstration :
    ```bash
    uvicorn mock_wanikani_api:app --reload
    ```
@@ -33,9 +33,10 @@ Cette application Streamlit permet d'afficher vos kanji, vocabulaire et statisti
    ```
    Utilisez la valeur `access_token` renvoyée pour faire des requêtes protégées.
 
-5. Si vous utilisez l'API de démonstration, vous pouvez changer l'URL de base en
+Si vous utilisez l'API de démonstration, vous pouvez changer l'URL de base en
    définissant la variable d'environnement `WANIKANI_API_BASE`. Par défaut, l'app
    pointe vers `https://api.wanikani.com/v2/`.
+
 
 ## Fonctionnalités
 
