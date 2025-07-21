@@ -10,6 +10,9 @@ Cette application Streamlit permet d'afficher vos kanji, vocabulaire et statisti
    ```bash
    streamlit run wanikani_dashboard/app.py
    ```
+3. Récupérez votre token API WaniKani :
+   - Si vous ne possédez pas de compte, créez-en un sur [wanikani.com](https://www.wanikani.com/).
+   - Dans vos paramètres WaniKani, section *API Tokens*, générez un token **Read Only** et copiez‑le. Ce token vous sera demandé au lancement de l'application.
 
 ## Fonctionnalités
 
