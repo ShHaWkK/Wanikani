@@ -4,6 +4,7 @@ Ce tableau de bord doit etre lance avec ``streamlit run``.
 
 import datetime as dt
 import json
+import os
 from typing import Dict, List
 
 import pandas as pd
@@ -21,7 +22,7 @@ try:
 except Exception:
     pass
 
-API_BASE = "https://api.wanikani.com/v2/"
+API_BASE = os.environ.get("WANIKANI_API_BASE", "https://api.wanikani.com/v2/")
 
 
 def _get(url: str, token: str) -> Dict:
@@ -110,7 +111,7 @@ def build_review_schedule(summary: Dict) -> pd.DataFrame:
         available_at = dt.datetime.fromisoformat(item["available_at"].replace("Z", "+00:00"))
         if now <= available_at <= tomorrow:
             hour = available_at.replace(minute=0, second=0, microsecond=0)
-            hours[hour] = hours.get(hour, 0) + item["subject_ids"].__len__()
+            hours[hour] = hours.get(hour, 0) + len(item["subject_ids"])
     if not hours:
         return pd.DataFrame(columns=["Heure", "Nombre"])
     data = {"Heure": list(hours.keys()), "Nombre": list(hours.values())}
@@ -136,22 +137,24 @@ def build_level_dataframe(assignments: List[Dict], subjects: Dict[int, Dict]) ->
 
 # Interface Streamlit
 st.set_page_config(page_title="Tableau de bord WaniKani", page_icon="🎴", layout="wide")
-st.title("Tableau de bord WaniKani")
 
-# Style simple rappelant WaniKani
+# Style proche de WaniKani
+WANIKANI_PINK = "#f06"
 st.markdown(
-    """
+    f"""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;700&display=swap');
-        .stApp {background-color:#f5f5f5;}
-        .block-container {background-color:#ffffff; padding:2rem 2rem; border-radius:10px;}
-        h1, h2, h3 {color:#a25ef8; font-family:'Noto Sans', sans-serif;}
-        body, text, button {font-family:'Noto Sans', sans-serif;}
-        .stButton>button {background-color:#a25ef8; color:white; border:none; border-radius:4px;}
+        .stApp {{background-color:#f5f5f5;}}
+        .block-container {{background-color:#ffffff; padding:2rem 2rem; border-radius:10px;}}
+        h1, h2, h3 {{color:{WANIKANI_PINK}; font-family:'Noto Sans', sans-serif;}}
+        body, text, button {{font-family:'Noto Sans', sans-serif;}}
+        .stButton>button {{background-color:{WANIKANI_PINK}; color:white; border:none; border-radius:4px;}}
+        .wanikani-header {{background-color:{WANIKANI_PINK}; color:white; padding:1rem; text-align:center; margin-bottom:2rem; border-radius:5px;}}
     </style>
     """,
     unsafe_allow_html=True,
 )
+st.markdown("<div class='wanikani-header'>Tableau de bord WaniKani</div>", unsafe_allow_html=True)
 
 # Saisie du token utilisateur
 if "token" not in st.session_state:
