@@ -104,7 +104,7 @@ def translate_meaning(text: str, translator: Translator) -> str:
 def build_review_schedule(summary: Dict) -> pd.DataFrame:
     """Prepare un DataFrame avec les reviews des prochaines 24h."""
     upcoming = summary.get("data", {}).get("reviews", {}).get("upcoming", [])
-    now = dt.datetime.utcnow()
+    now = dt.datetime.now(dt.timezone.utc)
     tomorrow = now + dt.timedelta(hours=24)
     hours = {}
     for item in upcoming:
