@@ -15,7 +15,7 @@ try:
 except Exception:
     pass
 
-API_BASE = "https://api.wanikani.com/v2/"
+API_BASE = os.getenv("WANIKANI_API_BASE", "https://api.wanikani.com/v2/")
 
 
 # --- Appels API ---
@@ -56,6 +56,11 @@ def fetch_available_lessons(token: str) -> List[Dict]:
         data.extend(result["data"])
         url = result["pages"].get("next_url")
     return data
+
+
+def fetch_revision_session(token: str) -> Dict:
+    """Récupère un sujet aléatoire pour un exercice rapide."""
+    return _get(f"{API_BASE}revision-session", token)
 
 
 # --- Traitements des données ---
@@ -117,12 +122,7 @@ def build_level_dataframe(assignments: List[Dict], subjects: Dict[int, Dict]) ->
 
 
 # --- Interface Streamlit ---
-st.set_page_config(page_title="WaniKani Dashboard", page_icon="🎴", layout="wide", initial_sidebar_state="auto")
-WANIKANI_PINK = "#f06"
-
-# --- STYLE Pro ---
-
-st.set_page_config(page_title="Tableau de bord WaniKani", page_icon="🎴", layout="wide")
+st.set_page_config(page_title="Tableau de bord WaniKani", page_icon="🎴", layout="wide", initial_sidebar_state="auto")
 
 # Thème semi-sombre japonisant
 st.markdown("""
@@ -131,6 +131,7 @@ st.markdown("""
 
 :root {
     --sakura-pink: #f06292;
+    --fuji-purple: #8e44ad;
     --japan-dark: #1e1e2f;
     --japan-panel: #2a2a3d;
     --text-color: #f5f5f5;
@@ -138,8 +139,20 @@ st.markdown("""
 
 html, body, .stApp {
     background-color: var(--japan-dark);
+    background-image: radial-gradient(circle at 1px 1px, rgba(255,255,255,0.05) 1px, transparent 0);
+    background-size: 4px 4px;
     color: var(--text-color);
     font-family: 'Noto Sans JP', sans-serif;
+}
+
+.wanikani-header {
+    font-size: 2.5rem;
+    text-align: center;
+    margin-bottom: 2rem;
+    padding: 1rem;
+    background: linear-gradient(90deg, var(--sakura-pink), var(--fuji-purple));
+    border-radius: 8px;
+    color: white;
 }
 
 .block-container {
@@ -180,11 +193,20 @@ a {
 a:hover {
     text-decoration: underline;
 }
+
+.footer {
+    text-align: center;
+    margin-top: 2rem;
+    color: var(--text-color);
+    font-size: 0.8rem;
+}
 </style>
 """, unsafe_allow_html=True)
 
 # --- Titre ---
 st.markdown("<div class='wanikani-header'>🎴 Tableau de bord WaniKani</div>", unsafe_allow_html=True)
+st.sidebar.header("Menu")
+page = st.sidebar.radio("Navigation", ["Dashboard", "Leçons", "Exercices"])
 
 # --- Authentification ---
 if "token" not in st.session_state:
@@ -192,7 +214,14 @@ if "token" not in st.session_state:
 
 if not st.session_state["token"]:
     st.subheader("🔐 Connexion à l'API WaniKani")
-    st.session_state["token"] = st.text_input("Entrez votre API Token WaniKani", type="password", placeholder="ex : wk...123")
+    token_input = st.text_input(
+        "Entrez votre API Token WaniKani",
+        type="password",
+        placeholder="ex : wk...123",
+    )
+    if st.button("Connexion") and token_input:
+        st.session_state["token"] = token_input.strip()
+        st.experimental_rerun()
     st.stop()
 
 token = st.session_state["token"]
@@ -217,35 +246,31 @@ with st.spinner("🔄 Chargement des données..."):
         st.error(f"💥 Erreur : {exc}")
         st.stop()
 
-# --- Statistiques ---
-st.subheader("📊 Statistiques générales")
-col1, col2, col3 = st.columns(3)
-col1.metric("Kanji", len(kanji_assignments))
-col2.metric("Vocabulaire", len(vocab_assignments))
-col3.metric("Leçons disponibles", len(lesson_assignments))
+if page == "Dashboard":
+    st.subheader("📊 Statistiques générales")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Kanji", len(kanji_assignments))
+    col2.metric("Vocabulaire", len(vocab_assignments))
+    col3.metric("Leçons disponibles", len(lesson_assignments))
 
-# --- Graphiques ---
-st.subheader("⏰ Reviews dans les 24h")
-df_reviews = build_review_schedule(summary)
-if df_reviews.empty:
-    st.info("Aucune review à venir dans les prochaines 24h.")
-else:
-    st.bar_chart(df_reviews.set_index("Heure"))
+    st.subheader("⏰ Reviews dans les 24h")
+    df_reviews = build_review_schedule(summary)
+    if df_reviews.empty:
+        st.info("Aucune review à venir dans les prochaines 24h.")
+    else:
+        st.bar_chart(df_reviews.set_index("Heure"))
 
-st.subheader("🔁 Répartition SRS")
-st.bar_chart(srs_df.set_index("SRS"))
+    st.subheader("🔁 Répartition SRS")
+    st.bar_chart(srs_df.set_index("SRS"))
 
-st.subheader("📈 Progression par niveau")
-if not level_df.empty:
-    st.bar_chart(level_df.set_index("Niveau"))
-else:
-    st.info("Aucune donnée de niveau disponible.")
+    st.subheader("📈 Progression par niveau")
+    if not level_df.empty:
+        st.bar_chart(level_df.set_index("Niveau"))
+    else:
+        st.info("Aucune donnée de niveau disponible.")
 
-# --- Éléments d’étude ---
-st.subheader("📚 Détails des éléments")
-tabs = st.tabs(["📝 Leçons", "🈚 Kanji", "📖 Vocabulaire"])
-
-with tabs[0]:
+elif page == "Leçons":
+    st.subheader("📝 Leçons disponibles")
     if not lesson_assignments:
         st.write("Aucune leçon disponible.")
     else:
@@ -259,7 +284,7 @@ with tabs[0]:
             data.append({"Élément": char, "Signification": meaning, "Lien": f"[Ouvrir]({url})"})
         st.write(pd.DataFrame(data).to_html(escape=False), unsafe_allow_html=True)
 
-with tabs[1]:
+    st.subheader("🈚 Kanji")
     data = []
     for a in kanji_assignments:
         sid = a["data"]["subject_id"]
@@ -269,7 +294,7 @@ with tabs[1]:
         data.append({"Kanji": char, "Signification": meaning})
     st.dataframe(pd.DataFrame(data), use_container_width=True)
 
-with tabs[2]:
+    st.subheader("📖 Vocabulaire")
     data = []
     for a in vocab_assignments:
         sid = a["data"]["subject_id"]
@@ -279,8 +304,26 @@ with tabs[2]:
         data.append({"Vocabulaire": char, "Signification": meaning})
     st.dataframe(pd.DataFrame(data), use_container_width=True)
 
+elif page == "Exercices":
+    st.subheader("🎯 Exercice rapide")
+    try:
+        session = fetch_revision_session(token)
+        subj = session.get("subject", {}).get("data", {})
+        char = subj.get("characters", "?")
+        meaning = subj.get("meaning") or subj.get("meanings", [{}])[0].get("meaning", "?")
+        st.markdown(f"## {char}")
+        if st.button("Révéler la réponse"):
+            st.write(f"Signification : {meaning}")
+    except Exception:
+        st.error("Impossible de charger un exercice.")
+
 # --- Déconnexion ---
 st.divider()
 if st.button("🔒 Se déconnecter"):
     st.session_state["token"] = ""
     st.experimental_rerun()
+
+st.markdown(
+    "<div class='footer'>Inspiré par <a href='https://www.wanikani.com' target='_blank'>WaniKani</a></div>",
+    unsafe_allow_html=True,
+)
