@@ -124,25 +124,23 @@ def build_level_dataframe(assignments: List[Dict], subjects: Dict[int, Dict]) ->
 # --- Interface Streamlit ---
 st.set_page_config(page_title="Tableau de bord WaniKani", page_icon="🎴", layout="wide", initial_sidebar_state="auto")
 
-# Thème semi-sombre japonisant
+# Thème clair moderne
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
 
 :root {
-    --sakura-pink: #f06292;
-    --fuji-purple: #8e44ad;
-    --japan-dark: #1e1e2f;
-    --japan-panel: #2a2a3d;
-    --text-color: #f5f5f5;
+    --primary-color: #3B82F6;
+    --secondary-color: #1E3A8A;
+    --bg-color: #f9fafb;
+    --panel-color: #ffffff;
+    --text-color: #111827;
 }
 
 html, body, .stApp {
-    background-color: var(--japan-dark);
-    background-image: radial-gradient(circle at 1px 1px, rgba(255,255,255,0.05) 1px, transparent 0);
-    background-size: 4px 4px;
+    background-color: var(--bg-color);
     color: var(--text-color);
-    font-family: 'Noto Sans JP', sans-serif;
+    font-family: 'Inter', sans-serif;
 }
 
 .wanikani-header {
@@ -150,25 +148,25 @@ html, body, .stApp {
     text-align: center;
     margin-bottom: 2rem;
     padding: 1rem;
-    background: linear-gradient(90deg, var(--sakura-pink), var(--fuji-purple));
+    background: var(--primary-color);
     border-radius: 8px;
     color: white;
 }
 
 .block-container {
-    background-color: var(--japan-panel);
+    background-color: var(--panel-color);
     padding: 2rem;
     border-radius: 12px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
 }
 
 h1, h2, h3, h4 {
-    color: var(--sakura-pink);
+    color: var(--secondary-color);
     font-weight: bold;
 }
 
 .stButton>button {
-    background-color: var(--sakura-pink);
+    background-color: var(--primary-color);
     color: white;
     border: none;
     border-radius: 6px;
@@ -180,13 +178,13 @@ h1, h2, h3, h4 {
 }
 
 table {
-    color: white;
-    background-color: #333333;
+    color: var(--text-color);
+    background-color: var(--panel-color);
     border-radius: 6px;
 }
 
 a {
-    color: #ffb3c6;
+    color: var(--primary-color);
     text-decoration: none;
 }
 
